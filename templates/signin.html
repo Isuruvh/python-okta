@@ -1,0 +1,96 @@
+{% if current_user.is_authenticated %}
+<form method="post" action="{{ url_for('signout') }}">
+    <button id="signout-button" type="submit">Sign out</button>
+</form>
+
+{% else %}
+    <style>
+        #okta-login-container {
+            margin-top: 20px;
+        }
+        #okta-error {
+            display: none;
+            color: #b00020;
+            margin-top: 12px;
+        }
+    </style>
+
+    <link href="https://global.oktacdn.com/okta-signin-widget/5.5.2/css/okta-sign-in.min.css" rel="stylesheet" />
+
+<button id="signin-button" type="button" onclick="showOktaWidget()">Show sign in</button>
+
+<div id="okta-login-container"></div>
+<div id="okta-error"></div>
+
+<!-- Load Okta Sign-In Widget JS -->
+<script src="https://global.oktacdn.com/okta-signin-widget/5.5.2/js/okta-sign-in.min.js"></script>
+
+<script>
+    let widgetShown = false;
+
+    function showError(message) {
+        const errorBox = document.getElementById('okta-error');
+        errorBox.textContent = message;
+        errorBox.style.display = 'block';
+    }
+
+    function showOktaWidget() {
+        if (widgetShown) return;   // Prevent double render
+
+        if (typeof OktaSignIn === 'undefined') {
+            showError('Okta widget script is still loading.');
+            return;
+        }
+
+        const baseUrl = "{{ base_url }}";
+        const clientId = "{{ client_id }}";
+        const redirectUri = "{{ redirect_uri }}";
+        const issuer = "{{ issuer }}";
+        const state = "{{ state }}";
+        const codeChallenge = "{{ code_challenge }}";
+
+        if (!baseUrl || !clientId || !redirectUri || !issuer) {
+            showError('Missing Okta configuration. Check BASE_URL, CLIENT_ID, REDIRECT_URI, ISSUER.');
+            return;
+        }
+
+        widgetShown = true;
+
+        const signIn = new OktaSignIn({
+            baseUrl: baseUrl,
+            issuer: issuer,
+            clientId: clientId,
+            redirectUri: redirectUri,
+            state: state,
+            codeChallenge: codeChallenge,
+            el: '#okta-login-container',
+            authParams: {
+                responseType: ['code'],
+                scopes: ['openid', 'profile', 'email']
+            }
+        });
+
+        document.getElementById('signin-button').style.display = 'none';
+
+        signIn.showSignInAndRedirect().catch(function(error) {
+            widgetShown = false;
+            if (typeof signIn.remove === 'function') {
+                signIn.remove();
+            }
+            document.getElementById('signin-button').style.display = 'inline-block';
+
+            if (error && String(error.message || '').includes('grant type')) {
+                showError('OAuth grant type mismatch. Ensure your Okta app allows Authorization Code for this web client.');
+            } else {
+                showError('Okta widget failed to initialize.');
+            }
+
+            console.error('Okta Widget Error:', error);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        showOktaWidget();
+    });
+</script>
+{% endif %}
