@@ -15,7 +15,6 @@ from flask_login import (
 )
 from user import User
 
-
 dotenv.load_dotenv()
 app = Flask(__name__)
 app.config.update({'SECRET_KEY': 'qwertyuioplkjhgfdsazxcvbnmlkjhgf'})
@@ -24,16 +23,13 @@ CORS(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 
-
 @login_manager.user_loader
 def load_user(user_id):
-  return User.get(user_id)
+    return User.get(user_id)
+
 @app.route("/")
 def home():
     return render_template("signin.html")
-
-if __name__ == '__main__':
-    app.run(host="localhost", port=5000, debug=True)
 
 config = {
     "auth_uri": os.getenv('OKTA_AUTH_URI'),
@@ -44,18 +40,16 @@ config = {
     "token_uri": os.getenv('OKTA_TOKEN_URI'),
     "userinfo_uri": os.getenv('OKTA_USERINFO_URI')
 }
+
 @app.route("/signin")
 def signin():
-    # store app state and code verifier in session
     session['app_state'] = secrets.token_urlsafe(64)
     session['code_verifier'] = secrets.token_urlsafe(64)
 
-    # calculate code challenge
     hashed = hashlib.sha256(session['code_verifier'].encode('ascii')).digest()
     encoded = base64.urlsafe_b64encode(hashed)
     code_challenge = encoded.decode('ascii').strip('=')
 
-    # get request params
     query_params = {'client_id': config["client_id"],
                     'redirect_uri': config["redirect_uri"],
                     'scope': "openid email profile",
@@ -65,27 +59,57 @@ def signin():
                     'response_type': 'code',
                     'response_mode': 'query'}
 
-    # build request_uri
     request_uri = "{base_url}?{query_params}".format(
         base_url=config["auth_uri"],
         query_params=requests.compat.urlencode(query_params)
     )
 
     return redirect(request_uri)
+
+@app.before_request
+def check_valid_signin():
+    # Fixed string matching for endpoint checking rather than string path matching
+    if request.endpoint in ('profile', 'signout') and not current_user.is_authenticated:
+        return render_template('signin.html', next=request.endpoint)
+
 @app.route("/signout", methods=["GET", "POST"])
 @login_required
 def signout():
+    # 1. Get the stored id_token before clearing session data
+    id_token = session.get("id_token")
+    
+    # 2. Clear Flask-Login tracking
     logout_user()
-    return redirect(url_for("signin"))
+    
+    # 3. Completely clear the Flask browser session cookies
+    session.clear()
+    
+    # 4. If an id_token exists, build the Okta logout redirection URL
+    if id_token and config["issuer"]:
+        # Derive Okta logout endpoint from issuer base string
+        logout_base = f"{config['issuer']}/v1/logout" if "oauth2" in config['issuer'] else f"{config['issuer']}/oauth2/v1/logout"
+        
+        query_params = {
+            "id_token_hint": id_token,
+            "post_logout_redirect_uri": "http://127.0.0.1:5000/"  # Points back to your root app signin page
+        }
+        
+        logout_uri = f"{logout_base}?{requests.compat.urlencode(query_params)}"
+        return redirect(logout_uri)
+
+    # Fallback option if token wasn't found
+    return redirect(url_for("home"))
+
 @app.route("/authorization-code/callback")
 def callback():
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     code = request.args.get("code")
     app_state = request.args.get("state")
-    #if app_state != session['app_state']:
-    #    return "The app state doesn't match"
+    if app_state != session['app_state']:
+        return "The app state doesn't match", 403
     if not code:
-            return "The code wasn't returned or isn't accessible", 403
+        return "The code wasn't returned or isn't accessible", 403
+        
     query_params = {'grant_type': 'authorization_code',
                     'code': code,
                     'redirect_uri': request.base_url,
@@ -99,13 +123,15 @@ def callback():
         auth=(config["client_id"], config["client_secret"]),
     ).json()
 
-    # Get tokens and validate
     if not exchange.get("token_type"):
-            return "Unsupported token type. Should be 'Bearer'.", 403
+        return "Unsupported token type. Should be 'Bearer'.", 403
+        
     access_token = exchange["access_token"]
     id_token = exchange["id_token"]
 
-    # Authorization flow successful, get userinfo and sign in user
+    # Save ID token in Flask session for the logout step later
+    session["id_token"] = id_token
+
     userinfo_response = requests.get(config["userinfo_uri"],
                                     headers={'Authorization': f'Bearer {access_token}'}).json()
 
@@ -118,12 +144,17 @@ def callback():
     )
 
     if not User.get(unique_id):
-            User.create(unique_id, user_name, user_email)
+        User.create(unique_id, user_name, user_email)
 
     login_user(user)
 
     return redirect(url_for("profile"))
 
 @app.route("/profile")
+@login_required
 def profile():
-   return render_template("profile.html", user=current_user)
+    return render_template("profile.html", user=current_user)
+
+if __name__ == '__main__':
+    # Keep the execution code block at the very bottom
+    app.run(host="localhost", port=5000, debug=True)
