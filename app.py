@@ -91,7 +91,7 @@ def signout():
         
         query_params = {
             "id_token_hint": id_token,
-            "post_logout_redirect_uri": "http://127.0.0.1:5000/"  # Points back to your root app signin page
+            "post_logout_redirect_uri": "http://localhost:5000/"  # Points back to your root app signin page
         }
         
         logout_uri = f"{logout_base}?{requests.compat.urlencode(query_params)}"
@@ -100,12 +100,14 @@ def signout():
     # Fallback option if token wasn't found
     return redirect(url_for("home"))
 
+@app.route("/callback")
 @app.route("/authorization-code/callback")
 def callback():
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     code = request.args.get("code")
     app_state = request.args.get("state")
-    if app_state != session['app_state']:
+    expected_state = session.get('app_state')
+    if not expected_state or app_state != expected_state:
         return "The app state doesn't match", 403
     if not code:
         return "The code wasn't returned or isn't accessible", 403
