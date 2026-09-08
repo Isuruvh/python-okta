@@ -154,11 +154,12 @@ pip install -r requirements.txt
 ```
 
 **Dependencies:**
-- `Flask` - Web framework
-- `Flask-Login` - User session management
+- `Flask 3.1.2` - Web framework
+- `Flask-Login 0.6.3` - User session management
 - `Flask-CORS` - CORS support
 - `requests` - HTTP client library
 - `python-dotenv` - Environment variable management
+- `Werkzeug 3.1.3` - Flask's WSGI utility library
 
 ### Step 4: Create `.env` Configuration File
 
@@ -172,7 +173,7 @@ OKTA_CLIENT_SECRET=your_client_secret_here
 OKTA_AUTH_URI=https://dev-123456.okta.com/oauth2/default/v1/authorize
 OKTA_TOKEN_URI=https://dev-123456.okta.com/oauth2/default/v1/token
 OKTA_USERINFO_URI=https://dev-123456.okta.com/oauth2/default/v1/userinfo
-OKTA_REDIRECT_URI=http://127.0.0.1:5000/authorization-code/callback
+OKTA_REDIRECT_URI=http://localhost:5000/callback
 ```
 
 > ⚠️ **Security Warning**: Never commit `.env` to version control. It's already listed in `.gitignore`.
@@ -195,8 +196,8 @@ OKTA_REDIRECT_URI=http://127.0.0.1:5000/authorization-code/callback
 
 - **App integration name**: Python Okta PKCE Demo
 - **Grant type**: Authorization Code, Refresh Token
-- **Sign-in redirect URIs**: `http://127.0.0.1:5000/authorization-code/callback`
-- **Sign-out redirect URIs**: `http://127.0.0.1:5000/`
+- **Sign-in redirect URI**: `http://localhost:5000/callback`
+- **Sign-out redirect URI**: `http://localhost:5000/`
 - **Scopes**: `openid`, `email`, `profile`
 
 #### 3. Obtain Credentials
@@ -238,7 +239,8 @@ Main application file containing:
 - Endpoint handlers:
   - `/` - Home/landing page
   - `/signin` - Initiates PKCE flow
-  - `/authorization-code/callback` - OAuth callback handler
+    - `/callback` - OAuth callback handler used by the local Okta configuration
+    - `/authorization-code/callback` - Compatibility callback route
   - `/profile` - Protected user profile page
   - `/signout` - Logout handler
 
@@ -320,7 +322,7 @@ def signin():
 After successful authentication, Okta redirects user back to:
 
 ```
-http://127.0.0.1:5000/authorization-code/callback?code=XXXXXXX&state=YYYYYYY
+http://localhost:5000/callback?code=XXXXXXX&state=YYYYYYY
 ```
 
 ---
@@ -330,11 +332,12 @@ http://127.0.0.1:5000/authorization-code/callback?code=XXXXXXX&state=YYYYYYY
 The callback handler processes the authorization code:
 
 ```python
+@app.route("/callback")
 @app.route("/authorization-code/callback")
 def callback():
     # 1. Validate state parameter
     app_state = request.args.get("state")
-    if app_state != session['app_state']:
+  if not session.get('app_state') or app_state != session['app_state']:
         return "The app state doesn't match", 403
     
     # 2. Extract authorization code
@@ -452,12 +455,12 @@ python app.py
 ```
  * Serving Flask app 'app'
  * Debug mode: on
- * Running on http://127.0.0.1:5000
+ * Running on http://localhost:5000
 ```
 
 ### Accessing the Application
 
-1. **Open browser**: Navigate to `http://127.0.0.1:5000`
+1. **Open browser**: Navigate to `http://localhost:5000`
 2. **Click Sign In**: Initiates PKCE OAuth flow
 3. **Authenticate with Okta**: Enter your Okta credentials
 4. **Grant Consent**: Approve application access (first time only)
@@ -474,7 +477,8 @@ python app.py
 |--------|----------|-------------|
 | GET | `/` | Home page with sign-in button |
 | GET | `/signin` | Initiates OAuth 2.0 PKCE flow |
-| GET | `/authorization-code/callback` | OAuth callback handler |
+| GET | `/callback` | OAuth callback handler |
+| GET | `/authorization-code/callback` | Compatibility callback route |
 
 ### Protected Endpoints (Requires Authentication)
 
@@ -489,7 +493,7 @@ python app.py
 ```
 GET /oauth2/default/v1/authorize?
   client_id=0oaXXXXXXXXXXXXXXXXX&
-  redirect_uri=http://127.0.0.1:5000/authorization-code/callback&
+    redirect_uri=http://localhost:5000/callback&
   response_type=code&
   scope=openid%20email%20profile&
   state=RANDOM_STATE_VALUE&
@@ -504,7 +508,7 @@ Content-Type: application/x-www-form-urlencoded
 
 grant_type=authorization_code&
 code=AUTHORIZATION_CODE&
-redirect_uri=http://127.0.0.1:5000/authorization-code/callback&
+redirect_uri=http://localhost:5000/callback&
 code_verifier=CODE_VERIFIER_VALUE&
 client_id=0oaXXXXXXXXXXXXXXXXX&
 client_secret=SECRET_VALUE
@@ -639,7 +643,7 @@ Authorization: Bearer ACCESS_TOKEN
 **Solutions**:
 ```python
 # Ensure this matches exactly:
-OKTA_REDIRECT_URI=http://127.0.0.1:5000/authorization-code/callback
+OKTA_REDIRECT_URI=http://localhost:5000/callback
 
 # Must be registered in Okta application settings
 ```
