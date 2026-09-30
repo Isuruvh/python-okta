@@ -55,7 +55,7 @@ def signin():
 
     query_params = {'client_id': config["client_id"],
                     'redirect_uri': config["redirect_uri"],
-                    'scope': "openid email profile",
+                    'scope': "openid profile",  # email scope intentionally omitted
                     'state': session['app_state'],
                     # 'code_challenge': code_challenge,
                     # 'code_challenge_method': 'S256',
@@ -141,7 +141,7 @@ def callback():
                                     headers={'Authorization': f'Bearer {access_token}'}).json()
 
     unique_id = userinfo_response["sub"]
-    user_email = userinfo_response["email"]
+    user_email = userinfo_response.get("email", "")
     user_name = userinfo_response["given_name"]
 
     user = User(
