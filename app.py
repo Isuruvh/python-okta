@@ -42,6 +42,8 @@ config = {
     "userinfo_uri": os.getenv('OKTA_USERINFO_URI')
 }
 
+refresh_tokens = {}
+
 @app.route("/signin")
 def signin():
     session['app_state'] = secrets.token_urlsafe(64)
@@ -55,7 +57,7 @@ def signin():
 
     query_params = {'client_id': config["client_id"],
                     'redirect_uri': config["redirect_uri"],
-                    'scope': "openid profile",  # email scope intentionally omitted
+                    'scope': "openid profile offline_access",  # email scope intentionally omitted
                     'state': session['app_state'],
                     # 'code_challenge': code_challenge,
                     # 'code_challenge_method': 'S256',
@@ -80,11 +82,13 @@ def check_valid_signin():
 def signout():
     # 1. Get the stored id_token before clearing session data
     id_token = session.get("id_token")
+    user_id = current_user.get_id()
     
     # 2. Clear Flask-Login tracking
     logout_user()
     
     # 3. Completely clear the Flask browser session cookies
+    refresh_tokens.pop(user_id, None)
     session.clear()
     
     # 4. If an id_token exists, build the Okta logout redirection URL
@@ -143,6 +147,9 @@ def callback():
     unique_id = userinfo_response["sub"]
     user_email = userinfo_response.get("email", "")
     user_name = userinfo_response["given_name"]
+    refresh_token = exchange.get("refresh_token")
+    if refresh_token:
+        refresh_tokens[unique_id] = refresh_token
 
     user = User(
         id_=unique_id, name=user_name, email=user_email
@@ -158,7 +165,11 @@ def callback():
 @app.route("/profile")
 @login_required
 def profile():
-    return render_template("profile.html", user=current_user)
+    return render_template(
+        "profile.html",
+        user=current_user,
+        refresh_token_received=current_user.get_id() in refresh_tokens,
+    )
 
 if __name__ == '__main__':
     # Keep the execution code block at the very bottom

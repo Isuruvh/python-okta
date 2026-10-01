@@ -266,6 +266,13 @@
                     <span class="profile-item-label">Status</span>
                     <span class="badge success-badge">Authenticated</span>
                 </div>
+
+                <div class="profile-item">
+                    <span class="profile-item-label">Refresh Token</span>
+                    <span class="badge {{ 'success-badge' if refresh_token_received else '' }}">
+                        {{ 'Refresh token received' if refresh_token_received else 'Not received' }}
+                    </span>
+                </div>
             </div>
             
             <div class="security-info">

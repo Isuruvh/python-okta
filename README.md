@@ -198,7 +198,9 @@ OKTA_REDIRECT_URI=http://localhost:5000/callback
 - **Grant type**: Authorization Code, Refresh Token
 - **Sign-in redirect URI**: `http://localhost:5000/callback`
 - **Sign-out redirect URI**: `http://localhost:5000/`
-- **Scopes**: `openid`, `email`, `profile`
+- **Scopes**: `openid`, `profile`, `offline_access`
+
+Enable the **Refresh Token** grant and allow the `offline_access` scope in Okta. The app displays whether Okta returned a refresh token; the token itself is kept server-side and is never rendered in the profile.
 
 #### 3. Obtain Credentials
 
@@ -288,7 +290,7 @@ def signin():
     query_params = {
         'client_id': config["client_id"],
         'redirect_uri': config["redirect_uri"],
-        'scope': "openid email profile",
+        'scope': "openid profile offline_access",
         'state': session['app_state'],
         'code_challenge': code_challenge,
         'code_challenge_method': 'S256',  # SHA-256
@@ -495,7 +497,7 @@ GET /oauth2/default/v1/authorize?
   client_id=0oaXXXXXXXXXXXXXXXXX&
     redirect_uri=http://localhost:5000/callback&
   response_type=code&
-  scope=openid%20email%20profile&
+  scope=openid%20profile%20offline_access&
   state=RANDOM_STATE_VALUE&
   code_challenge=CODE_CHALLENGE_SHA256&
   code_challenge_method=S256
@@ -520,8 +522,9 @@ client_secret=SECRET_VALUE
   "access_token": "eyJhbGciOiJSUzI1NiIsInR5...",
   "token_type": "Bearer",
   "expires_in": 3600,
-  "scope": "openid email profile",
-  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZC..."
+  "scope": "openid profile offline_access",
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZC...",
+  "refresh_token": "REDACTED_REFRESH_TOKEN"
 }
 ```
 
