@@ -19,6 +19,7 @@ class User(UserMixin):
 
     @staticmethod
     def get(user_id):
+        """Return the user matching the given ID, or None if not found."""
         return USERS_DB.get(user_id)
 
     @staticmethod

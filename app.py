@@ -1,10 +1,10 @@
-import base64
-import hashlib
-import requests
+"""Flask application for Okta authentication."""
+
+import os
 import secrets
 import dotenv
 import ngrok
-import os
+import requests
 from flask import Flask, render_template, redirect, request, session, url_for
 from flask_cors import CORS
 from flask_login import (
@@ -26,10 +26,12 @@ login_manager.init_app(app)
 
 @login_manager.user_loader
 def load_user(user_id):
+    """Retrieve a user by ID for Flask-Login."""
     return User.get(user_id)
 
 @app.route("/")
 def home():
+    """Render the sign-in page."""
     return render_template("signin.html")
 
 config = {
@@ -46,6 +48,7 @@ refresh_tokens = {}
 
 @app.route("/signin")
 def signin():
+    """Redirect the user to Okta to begin authentication."""
     session['app_state'] = secrets.token_urlsafe(64)
 
     # --- PKCE (commented out for plain Authorization Code flow) ---
@@ -64,22 +67,22 @@ def signin():
                     'response_type': 'code',
                     'response_mode': 'query'}
 
-    request_uri = "{base_url}?{query_params}".format(
-        base_url=config["auth_uri"],
-        query_params=requests.compat.urlencode(query_params)
-    )
+    request_uri = f"{config['auth_uri']}?{requests.compat.urlencode(query_params)}"
 
     return redirect(request_uri)
 
 @app.before_request
 def check_valid_signin():
+    """Show the sign-in page when a protected endpoint is requested anonymously."""
     # Fixed string matching for endpoint checking rather than string path matching
     if request.endpoint in ('profile', 'signout') and not current_user.is_authenticated:
         return render_template('signin.html', next=request.endpoint)
+    return None
 
 @app.route("/signout", methods=["GET", "POST"])
 @login_required
 def signout():
+    """Sign out the user and redirect to Okta's logout endpoint."""
     # 1. Get the stored id_token before clearing session data
     id_token = session.get("id_token")
     user_id = current_user.get_id()
@@ -110,6 +113,7 @@ def signout():
 @app.route("/callback")
 @app.route("/authorization-code/callback")
 def callback():
+    """Handle the authorization-code callback from Okta."""
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     code = request.args.get("code")
     app_state = request.args.get("state")
@@ -130,6 +134,7 @@ def callback():
         headers=headers,
         data=query_params,
         auth=(config["client_id"], config["client_secret"]),
+        timeout=10,
     ).json()
 
     if not exchange.get("token_type"):
@@ -142,7 +147,8 @@ def callback():
     session["id_token"] = id_token
 
     userinfo_response = requests.get(config["userinfo_uri"],
-                                    headers={'Authorization': f'Bearer {access_token}'}).json()
+                                    headers={'Authorization': f'Bearer {access_token}'},
+                                    timeout=10).json()
 
     unique_id = userinfo_response["sub"]
     user_email = userinfo_response.get("email", "")
@@ -165,6 +171,7 @@ def callback():
 @app.route("/profile")
 @login_required
 def profile():
+    """Render the authenticated user's profile page."""
     return render_template(
         "profile.html",
         user=current_user,
@@ -174,10 +181,12 @@ def profile():
 if __name__ == '__main__':
     # Keep the execution code block at the very bottom
     app.run(host="localhost", port=5000, debug=True)
-import ngrok
-
 def connect_ngrok():
-    forwarder = ngrok.forward("localhost:8085", authtoken_from_env=True, domain="esteemed-omit-creme.ngrok-free.dev")
+    """Start the ngrok tunnel for the local application."""
+    forwarder = ngrok.forward(  # pylint: disable=no-member
+        "localhost:8085",
+        authtoken_from_env=True,
+        domain="esteemed-omit-creme.ngrok-free.dev",
+    )
     print(f"Available at: {forwarder.url()}")
-
 connect_ngrok()
