@@ -1,7 +1,10 @@
 """Flask application for Okta authentication."""
 
+import base64
+import hashlib
 import os
 import secrets
+
 import dotenv
 import ngrok
 import requests
@@ -18,7 +21,13 @@ from user import User
 
 dotenv.load_dotenv()
 app = Flask(__name__)
-app.config.update({'SECRET_KEY': 'qwertyuioplkjhgfdsazxcvbnmlkjhgf'})
+app.config.update({
+    'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', secrets.token_urlsafe(32)),
+    'SESSION_COOKIE_SECURE': False,  # Set to True if using HTTPS
+    'SESSION_COOKIE_HTTPONLY': True,
+    'SESSION_COOKIE_SAMESITE': 'Lax',
+    'PERMANENT_SESSION_LIFETIME': 3600,  # 1 hour
+})
 CORS(app)
 
 login_manager = LoginManager()
@@ -49,21 +58,22 @@ refresh_tokens = {}
 @app.route("/signin")
 def signin():
     """Redirect the user to Okta to begin authentication."""
+    session.permanent = True  # Make session permanent
     session['app_state'] = secrets.token_urlsafe(64)
 
     # --- PKCE (commented out for plain Authorization Code flow) ---
-    # session['code_verifier'] = secrets.token_urlsafe(64)
-    #
-    # hashed = hashlib.sha256(session['code_verifier'].encode('ascii')).digest()
-    # encoded = base64.urlsafe_b64encode(hashed)
-    # code_challenge = encoded.decode('ascii').strip('=')
+    session['code_verifier'] = secrets.token_urlsafe(64)
+    
+    hashed = hashlib.sha256(session['code_verifier'].encode('ascii')).digest()
+    encoded = base64.urlsafe_b64encode(hashed)
+    code_challenge = encoded.decode('ascii').strip('=')
 
     query_params = {'client_id': config["client_id"],
                     'redirect_uri': config["redirect_uri"],
                     'scope': "openid profile offline_access",  # email scope intentionally omitted
                     'state': session['app_state'],
-                    # 'code_challenge': code_challenge,
-                    # 'code_challenge_method': 'S256',
+                    'code_challenge': code_challenge,
+                    'code_challenge_method': 'S256',
                     'response_type': 'code',
                     'response_mode': 'query'}
 
@@ -114,11 +124,16 @@ def signout():
 @app.route("/authorization-code/callback")
 def callback():
     """Handle the authorization-code callback from Okta."""
+    session.permanent = True  # Make session permanent
+    
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     code = request.args.get("code")
     app_state = request.args.get("state")
     expected_state = session.get('app_state')
     if not expected_state or app_state != expected_state:
+        # Debug: log the mismatch
+        print(f"State mismatch - Expected: {expected_state}, Got: {app_state}")
+        print(f"Session contents: {dict(session)}")
         return "The app state doesn't match", 403
     if not code:
         return "The code wasn't returned or isn't accessible", 403
@@ -126,7 +141,7 @@ def callback():
     query_params = {'grant_type': 'authorization_code',
                     'code': code,
                     'redirect_uri': request.base_url,
-                    # 'code_verifier': session['code_verifier'],  # PKCE (commented out)
+                    'code_verifier': session['code_verifier'],  # PKCE required
                     }
     query_params = requests.compat.urlencode(query_params)
     exchange = requests.post(
@@ -138,6 +153,7 @@ def callback():
     ).json()
 
     if not exchange.get("token_type"):
+        print(f"Token exchange error: {exchange}")
         return "Unsupported token type. Should be 'Bearer'.", 403
         
     access_token = exchange["access_token"]
