@@ -1,0 +1,13 @@
+{
+  "schema": "xaa-oidc-requesting-conformance-log/v1",
+  "generatedAt": "2026-08-10T12:34:56.000Z",
+  "result": "PASS",
+  "checks": { "…": "…" },
+  "evidence": { "…": "…" },
+  "verified_by": {
+    "authority": "xaa.dev",
+    "method": "independent-server-side-reverification",
+    "verified_at": "2026-08-10T12:34:57.000Z"
+  },
+  "jws": "eyJ…compact.JWS…"
+}
