@@ -174,9 +174,14 @@ OKTA_AUTH_URI=https://dev-123456.okta.com/oauth2/default/v1/authorize
 OKTA_TOKEN_URI=https://dev-123456.okta.com/oauth2/default/v1/token
 OKTA_USERINFO_URI=https://dev-123456.okta.com/oauth2/default/v1/userinfo
 OKTA_REDIRECT_URI=http://localhost:5000/callback
+
+# Flask Session Configuration
+FLASK_SECRET_KEY=your-secure-random-key-here
 ```
 
 > ⚠️ **Security Warning**: Never commit `.env` to version control. It's already listed in `.gitignore`.
+
+> 💡 **FLASK_SECRET_KEY**: Generate a secure key using `python -c "import secrets; print(secrets.token_urlsafe(32))"` and replace the placeholder value in `.env` for production deployments.
 
 ---
 
@@ -625,11 +630,52 @@ Authorization: Bearer ACCESS_TOKEN
 
 ### Issue: "The app state doesn't match"
 
-**Cause**: State parameter validation failed  
+**Cause**: Flask session not persisting between OAuth redirect  
+**Root Causes**:
+- Missing `session.permanent = True` in signin/callback routes
+- Weak or hardcoded SECRET_KEY
+- Session cookies not properly configured
+
 **Solutions**:
-- Ensure cookies are enabled in browser
-- Check for multiple browser tabs or concurrent requests
-- Verify `session['app_state']` is preserved between requests
+1. **Ensure FLASK_SECRET_KEY is set** in `.env`:
+   ```bash
+   FLASK_SECRET_KEY="your-secure-random-key-here"
+   ```
+   Generate secure key:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+2. **Verify session configuration in app.py**:
+   ```python
+   app.config.update({
+       'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', secrets.token_urlsafe(32)),
+       'SESSION_COOKIE_HTTPONLY': True,
+       'SESSION_COOKIE_SAMESITE': 'Lax',
+       'PERMANENT_SESSION_LIFETIME': 3600,
+   })
+   ```
+
+3. **Mark sessions as permanent** in signin and callback routes:
+   ```python
+   @app.route("/signin")
+   def signin():
+       session.permanent = True  # Required for session persistence
+       session['app_state'] = secrets.token_urlsafe(64)
+       ...
+   
+   @app.route("/callback")
+   def callback():
+       session.permanent = True  # Required for session persistence
+       ...
+   ```
+
+4. **Enable cookies** in browser (check privacy settings)
+
+5. **For production HTTPS**, update config:
+   ```python
+   'SESSION_COOKIE_SECURE': True,  # Require HTTPS
+   ```
 
 ### Issue: "Unsupported token type"
 
